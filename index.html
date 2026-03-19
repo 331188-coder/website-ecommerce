@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>CARVAULT — Seat Gap Organizer</title>
+<script src="https://js.stripe.com/v3/"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════
@@ -1046,7 +1047,7 @@ function stickyAdd(){
 }
 function openCart(){ document.getElementById('drw').classList.add('on'); document.getElementById('ov').classList.add('on'); }
 function closeCart(){ document.getElementById('drw').classList.remove('on'); document.getElementById('ov').classList.remove('on'); }
-function checkout(){ alert('Checkout!\nTotal: $'+cartTotal()+'\n\nConnect Stripe or Shopify to complete.'); }
+function checkout(){ openPayModal(); }
 function chQty(d){ stickyQty=Math.max(1,Math.min(10,stickyQty+d)); document.getElementById('qtyN').textContent=stickyQty; document.getElementById('stickyBtn').textContent=`Add — $${19*stickyQty}`; }
 
 // ── SCROLL ────────────────────────────────────
@@ -1182,5 +1183,561 @@ const rm=document.querySelector('.r-meta');if(rm)bIO.observe(rm);
 })();
 
 </script>
+
+<!-- ═══════════════════════════════════════════════════
+     CARVAULT PAYMENT — Stripe Embedded + PayPal
+═══════════════════════════════════════════════════ -->
+
+<!-- PayPal SDK — swap YOUR_PAYPAL_CLIENT_ID with your real one -->
+<script>
+  // Load PayPal SDK dynamically so it doesn't block page load
+  (function(){
+    var s = document.createElement('script');
+    s.src = 'https://www.paypal.com/sdk/js?client-id=YOUR_PAYPAL_CLIENT_ID&currency=USD&components=buttons';
+    s.setAttribute('data-namespace','paypal_sdk');
+    s.async = true;
+    document.head.appendChild(s);
+  })();
+</script>
+
+<style>
+/* ── MODAL OVERLAY ─────────────────────────────────── */
+.pm-bg{
+  position:fixed;inset:0;z-index:2000;
+  background:rgba(0,0,0,.82);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+  padding:16px;
+  opacity:0;pointer-events:none;
+  transition:opacity .28s;
+}
+.pm-bg.on{opacity:1;pointer-events:all}
+
+/* ── MODAL CARD ────────────────────────────────────── */
+.pm-card{
+  background:#0a0f10;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;
+  width:100%;max-width:480px;
+  max-height:92vh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  transform:translateY(20px) scale(.97);
+  transition:transform .28s cubic-bezier(.34,1.2,.64,1);
+  padding:28px;
+}
+.pm-bg.on .pm-card{transform:translateY(0) scale(1)}
+
+/* ── HEADER ────────────────────────────────────────── */
+.pm-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+.pm-title{font-family:'Playfair Display',serif;font-size:21px;font-weight:700;color:#ede9e2}
+.pm-close{
+  width:30px;height:30px;border-radius:6px;cursor:pointer;
+  background:#101616;border:1px solid rgba(255,255,255,.1);
+  color:#566262;font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.pm-close:hover{color:#ede9e2;background:#141d1f}
+
+/* ── ORDER SUMMARY ─────────────────────────────────── */
+.pm-summary{
+  background:#101616;border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;padding:15px;margin-bottom:22px;
+}
+.pm-row{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;color:#ede9e2;padding:4px 0;
+}
+.pm-row-lbl{color:#566262}
+.pm-row.total{
+  padding-top:12px;margin-top:8px;
+  border-top:1px solid rgba(255,255,255,.07);
+  font-size:16px;font-weight:500;
+}
+.pm-row.total .pm-price{
+  font-family:'Playfair Display',serif;font-size:22px;
+  font-weight:700;color:#3399ff;
+}
+
+/* ── TAB SWITCHER ──────────────────────────────────── */
+.pm-tabs{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:8px;margin-bottom:22px;
+}
+.pm-tab{
+  padding:11px;border-radius:8px;cursor:pointer;
+  border:1.5px solid rgba(255,255,255,.1);
+  background:transparent;color:#566262;
+  font-family:'Jost',sans-serif;font-size:12px;
+  font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:all .2s;
+}
+.pm-tab:hover{border-color:rgba(255,255,255,.22);color:#ede9e2}
+.pm-tab.on{
+  border-color:#3399ff;color:#3399ff;
+  background:rgba(51,153,255,.07);
+}
+.pm-tab svg{flex-shrink:0}
+
+/* ── STRIPE EMBEDDED CONTAINER ─────────────────────── */
+#stripe-payment-element{
+  min-height:180px;
+}
+/* Override Stripe iframe background to match dark theme */
+#stripe-payment-element iframe{border-radius:8px!important}
+
+.pay-submit{
+  width:100%;padding:14px;border-radius:8px;border:none;cursor:pointer;
+  background:#3399ff;color:#fff;
+  font-family:'Jost',sans-serif;font-size:13px;font-weight:500;
+  letter-spacing:.08em;text-transform:uppercase;
+  margin-top:16px;
+  box-shadow:0 0 20px rgba(51,153,255,.3);
+  transition:all .22s;position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.pay-submit::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.13) 50%,transparent 70%);
+  transform:translateX(-120%);transition:transform .5s;
+}
+.pay-submit:hover::before{transform:translateX(120%)}
+.pay-submit:hover{box-shadow:0 0 36px rgba(51,153,255,.5);transform:translateY(-1px)}
+.pay-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* ── PAYPAL PANEL ──────────────────────────────────── */
+#paypal-panel{display:none}
+#paypal-panel.on{display:block}
+#stripe-panel{display:none}
+#stripe-panel.on{display:block}
+#paypal-buttons-mount{min-height:50px;margin-top:4px}
+.paypal-loading{
+  height:50px;display:flex;align-items:center;justify-content:center;
+  color:#566262;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+}
+
+/* ── STATES ────────────────────────────────────────── */
+.pm-processing{
+  display:none;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;padding:36px;text-align:center;
+}
+.pm-processing.on{display:flex}
+.pm-spin{
+  width:34px;height:34px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.1);border-top-color:#3399ff;
+  animation:pmspin .8s linear infinite;
+}
+@keyframes pmspin{to{transform:rotate(360deg)}}
+.pm-spin-txt{font-size:11px;letter-spacing:.12em;color:#566262;text-transform:uppercase}
+
+.pm-success{
+  display:none;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;padding:28px;text-align:center;
+}
+.pm-success.on{display:flex}
+.pm-success-check{
+  width:60px;height:60px;border-radius:50%;
+  background:rgba(26,160,80,.15);border:1.5px solid rgba(26,160,80,.4);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;
+}
+.pm-success-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#ede9e2}
+.pm-success-sub{font-size:13px;color:#566262;line-height:1.7;max-width:280px}
+
+.pm-error{
+  background:rgba(255,60,60,.08);border:1px solid rgba(255,60,60,.2);
+  border-radius:8px;padding:12px 14px;margin-top:12px;
+  font-size:12px;color:#ff8080;line-height:1.6;
+  display:none;
+}
+.pm-error.on{display:block}
+
+/* ── SECURITY BADGE ────────────────────────────────── */
+.pm-secure{
+  display:flex;align-items:center;justify-content:center;
+  gap:6px;margin-top:14px;
+  font-size:10px;color:#2e3838;letter-spacing:.05em;
+}
+.pm-secure svg{opacity:.4}
+
+/* Mobile */
+@media(max-width:500px){
+  .pm-card{padding:20px;border-radius:14px}
+  .pm-title{font-size:18px}
+}
+</style>
+
+<!-- MODAL HTML -->
+<div class="pm-bg" id="pmBg">
+  <div class="pm-card" id="pmCard">
+
+    <!-- Header -->
+    <div class="pm-head">
+      <div class="pm-title">Complete Your Order</div>
+      <button class="pm-close" onclick="closePayModal()">✕</button>
+    </div>
+
+    <!-- Main content (hidden during processing/success) -->
+    <div id="pmMain">
+      <!-- Order summary -->
+      <div class="pm-summary">
+        <div class="pm-row"><span class="pm-row-lbl">Product</span><span>CARVAULT Seat Organizer</span></div>
+        <div class="pm-row"><span class="pm-row-lbl">Color</span><span id="pmColor">Black</span></div>
+        <div class="pm-row"><span class="pm-row-lbl">Qty</span><span id="pmQty">1</span></div>
+        <div class="pm-row total">
+          <span class="pm-row-lbl">Total</span>
+          <span class="pm-price" id="pmTotal">$19.00</span>
+        </div>
+      </div>
+
+      <!-- Tab switcher -->
+      <div class="pm-tabs">
+        <button class="pm-tab on" id="tabStripe" onclick="switchTab('stripe')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Card
+        </button>
+        <button class="pm-tab" id="tabPaypal" onclick="switchTab('paypal')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11C7 11 6 17 12 17H17L18 12C18 12 18 8 14 8H9C7.5 8 7 9 7 11Z"/><path d="M4 8C4 8 3 14 9 14H14"/></svg>
+          PayPal
+        </button>
+      </div>
+
+      <!-- Stripe panel -->
+      <div id="stripe-panel" class="on">
+        <div id="stripe-payment-element">
+          <!-- Stripe Elements mounts here -->
+          <div style="height:180px;display:flex;align-items:center;justify-content:center;color:#566262;font-size:11px;letter-spacing:.1em;text-transform:uppercase">
+            Loading payment form…
+          </div>
+        </div>
+        <div class="pm-error" id="stripeError"></div>
+        <button class="pay-submit" id="stripeSubmit" onclick="submitStripe()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Pay $<span id="submitAmount">19.00</span>
+        </button>
+      </div>
+
+      <!-- PayPal panel -->
+      <div id="paypal-panel">
+        <div id="paypal-buttons-mount">
+          <div class="paypal-loading">Loading PayPal…</div>
+        </div>
+        <div class="pm-error" id="paypalError"></div>
+      </div>
+
+      <!-- Security -->
+      <div class="pm-secure">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        256-bit SSL · Secured by Stripe & PayPal
+      </div>
+    </div><!-- /pmMain -->
+
+    <!-- Processing -->
+    <div class="pm-processing" id="pmProcessing">
+      <div class="pm-spin"></div>
+      <div class="pm-spin-txt">Processing payment…</div>
+    </div>
+
+    <!-- Success -->
+    <div class="pm-success" id="pmSuccess">
+      <div class="pm-success-check">✓</div>
+      <div class="pm-success-title">Order Confirmed!</div>
+      <div class="pm-success-sub">Check your email for confirmation. Estimated delivery: 7–14 business days.</div>
+    </div>
+
+  </div><!-- /pmCard -->
+</div><!-- /pmBg -->
+
+<script>
+// ═════════════════════════════════════════════════════════
+// CONFIG — replace these two values after setup
+// ═════════════════════════════════════════════════════════
+const STRIPE_PUBLISHABLE_KEY = 'pk_live_YOUR_STRIPE_PUBLISHABLE_KEY';
+// Test key format:  pk_test_51...
+// Live key format:  pk_live_51...
+// Get from: dashboard.stripe.com → Developers → API Keys
+
+const BACKEND_URL = 'https://your-backend.railway.app';
+// Your Railway/Render URL from the backend setup guide
+// ═════════════════════════════════════════════════════════
+
+let stripeInstance = null;
+let stripeElements = null;
+let paymentElement = null;
+let paypalRendered = false;
+let currentTab     = 'stripe';
+
+// ── OPEN / CLOSE ──────────────────────────────────────────
+function openPayModal() {
+  // Sync order details
+  document.getElementById('pmColor').textContent   = CNAMES[colorIdx];
+  document.getElementById('pmQty').textContent     = stickyQty;
+  const total = (19 * stickyQty).toFixed(2);
+  document.getElementById('pmTotal').textContent   = '$' + total;
+  document.getElementById('submitAmount').textContent = total;
+
+  // Reset to main view
+  showPmMain();
+  clearErrors();
+
+  // Open
+  document.getElementById('pmBg').classList.add('on');
+  document.body.style.overflow = 'hidden';
+
+  // Init Stripe embedded element
+  initStripeElements();
+
+  // Init PayPal if on that tab
+  if(currentTab === 'paypal') renderPayPalButtons();
+}
+
+function closePayModal() {
+  document.getElementById('pmBg').classList.remove('on');
+  document.body.style.overflow = '';
+}
+
+// Close on backdrop click
+document.getElementById('pmBg').addEventListener('click', e => {
+  if(e.target === document.getElementById('pmBg')) closePayModal();
+});
+
+// ── TAB SWITCHER ──────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabStripe').classList.toggle('on',  tab === 'stripe');
+  document.getElementById('tabPaypal').classList.toggle('on',  tab === 'paypal');
+  document.getElementById('stripe-panel').classList.toggle('on', tab === 'stripe');
+  document.getElementById('paypal-panel').classList.toggle('on', tab === 'paypal');
+  clearErrors();
+
+  if(tab === 'paypal') renderPayPalButtons();
+}
+
+// ── STRIPE EMBEDDED ───────────────────────────────────────
+async function initStripeElements() {
+  if(!STRIPE_PUBLISHABLE_KEY || STRIPE_PUBLISHABLE_KEY.includes('YOUR_')) {
+    document.getElementById('stripe-payment-element').innerHTML =
+      '<div style="padding:20px;text-align:center;color:#566262;font-size:12px;line-height:1.7">' +
+      '⚙️ Add your Stripe publishable key to<br><code style="color:#3399ff;font-size:11px">STRIPE_PUBLISHABLE_KEY</code><br>in the script below to activate payments.</div>';
+    return;
+  }
+
+  try {
+    // Load Stripe.js
+    if(!stripeInstance) {
+      stripeInstance = Stripe(STRIPE_PUBLISHABLE_KEY);
+    }
+
+    // Create PaymentIntent on backend
+    const res = await fetch(`${BACKEND_URL}/api/stripe/create-payment-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        color:  CNAMES[colorIdx],
+        qty:    stickyQty,
+      })
+    });
+    const data = await res.json();
+    if(!data.clientSecret) throw new Error(data.error || 'No client secret');
+
+    // Mount Stripe Payment Element (embedded component)
+    stripeElements = stripeInstance.elements({
+      clientSecret: data.clientSecret,
+      appearance: {
+        theme: 'night',
+        variables: {
+          colorPrimary:        '#3399ff',
+          colorBackground:     '#101616',
+          colorText:           '#ede9e2',
+          colorDanger:         '#ff6b6b',
+          fontFamily:          'Jost, sans-serif',
+          borderRadius:        '8px',
+          spacingUnit:         '4px',
+          colorTextSecondary:  '#566262',
+          colorTextPlaceholder:'#2e3838',
+        },
+        rules: {
+          '.Input':{
+            backgroundColor: '#141d1f',
+            border: '1px solid rgba(255,255,255,.1)',
+            color: '#ede9e2',
+          },
+          '.Input:focus':{
+            border: '1px solid #3399ff',
+            boxShadow: '0 0 0 2px rgba(51,153,255,.15)',
+          },
+          '.Label':{ color: '#566262', fontSize: '11px', letterSpacing: '.08em', textTransform: 'uppercase' },
+          '.Tab':{ backgroundColor: '#101616', border: '1px solid rgba(255,255,255,.08)' },
+          '.Tab--selected':{ backgroundColor: 'rgba(51,153,255,.08)', border: '1px solid #3399ff' },
+        }
+      }
+    });
+
+    paymentElement = stripeElements.create('payment', {
+      layout: 'tabs', // shows card, Apple Pay, Google Pay as tabs
+      paymentMethodOrder: ['card', 'apple_pay', 'google_pay'],
+    });
+
+    document.getElementById('stripe-payment-element').innerHTML = '';
+    paymentElement.mount('#stripe-payment-element');
+
+  } catch(err) {
+    console.error('Stripe init error:', err);
+    showError('stripeError', 'Could not load payment form. Check your Stripe key and backend URL.');
+  }
+}
+
+// ── STRIPE SUBMIT ─────────────────────────────────────────
+async function submitStripe() {
+  if(!stripeElements) return;
+  const btn = document.getElementById('stripeSubmit');
+  btn.disabled = true;
+  clearErrors();
+  showProcessing();
+
+  try {
+    const { error } = await stripeInstance.confirmPayment({
+      elements: stripeElements,
+      confirmParams: {
+        return_url: window.location.origin + '/?payment=success',
+      },
+      // Use redirect:'if_required' so card payments stay on page
+      redirect: 'if_required',
+    });
+
+    if(error) {
+      showPmMain();
+      btn.disabled = false;
+      showError('stripeError', error.message);
+    } else {
+      // Payment succeeded without redirect (card)
+      showSuccess();
+    }
+  } catch(err) {
+    showPmMain();
+    btn.disabled = false;
+    showError('stripeError', 'Payment failed. Please try again.');
+  }
+}
+
+// ── PAYPAL EMBEDDED BUTTONS ───────────────────────────────
+function renderPayPalButtons() {
+  if(paypalRendered) return;
+  const mount = document.getElementById('paypal-buttons-mount');
+  if(!mount) return;
+
+  // Check if PayPal SDK loaded
+  if(typeof paypal_sdk === 'undefined') {
+    setTimeout(renderPayPalButtons, 800);
+    return;
+  }
+
+  paypalRendered = true;
+  mount.innerHTML = '';
+
+  paypal_sdk.Buttons({
+    style: {
+      layout:  'vertical',
+      color:   'gold',
+      shape:   'rect',
+      label:   'paypal',
+      height:  44,
+    },
+    createOrder: async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/paypal/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ color: CNAMES[colorIdx], qty: stickyQty })
+        });
+        const data = await res.json();
+        if(!data.id) throw new Error(data.error || 'PayPal order failed');
+        return data.id;
+      } catch(err) {
+        showError('paypalError', err.message);
+        throw err;
+      }
+    },
+    onApprove: async (data) => {
+      showProcessing();
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/paypal/capture-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderID: data.orderID, color: CNAMES[colorIdx], qty: stickyQty })
+        });
+        const result = await res.json();
+        if(result.status === 'success') {
+          showSuccess();
+        } else {
+          showPmMain();
+          showError('paypalError', 'Payment capture failed. Contact support.');
+        }
+      } catch(err) {
+        showPmMain();
+        showError('paypalError', 'Network error. Please try again.');
+      }
+    },
+    onError: (err) => {
+      console.error('PayPal error:', err);
+      showError('paypalError', 'PayPal encountered an error. Try the Card option.');
+    },
+    onCancel: () => { /* user cancelled, do nothing */ }
+  }).render('#paypal-buttons-mount');
+}
+
+// ── UI STATE HELPERS ──────────────────────────────────────
+function showPmMain() {
+  document.getElementById('pmMain').style.display       = 'block';
+  document.getElementById('pmProcessing').classList.remove('on');
+  document.getElementById('pmSuccess').classList.remove('on');
+}
+function showProcessing() {
+  document.getElementById('pmMain').style.display       = 'none';
+  document.getElementById('pmProcessing').classList.add('on');
+  document.getElementById('pmSuccess').classList.remove('on');
+}
+function showSuccess() {
+  document.getElementById('pmMain').style.display       = 'none';
+  document.getElementById('pmProcessing').classList.remove('on');
+  document.getElementById('pmSuccess').classList.add('on');
+  // Add to cart clears
+  cart = [];
+  renderCart();
+  updateBadge();
+  // Auto close after 4s
+  setTimeout(closePayModal, 4000);
+}
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.add('on');
+}
+function clearErrors() {
+  document.querySelectorAll('.pm-error').forEach(e => { e.textContent=''; e.classList.remove('on'); });
+  const btn = document.getElementById('stripeSubmit');
+  if(btn) btn.disabled = false;
+}
+
+// Handle return from Stripe redirect (Apple Pay etc.)
+(function checkReturnFromStripe(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('payment') === 'success') {
+    // Clean URL without reload
+    history.replaceState({}, '', window.location.pathname);
+    // Show a toast/banner
+    setTimeout(()=>{
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#1a7a3a;color:#fff;padding:12px 24px;border-radius:8px;font-size:13px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);letter-spacing:.04em';
+      banner.textContent = '✓ Order confirmed! Check your email.';
+      document.body.appendChild(banner);
+      setTimeout(()=>banner.remove(), 5000);
+    }, 500);
+  }
+})();
+</script>
+
 </body>
 </html>
