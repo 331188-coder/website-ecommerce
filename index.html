@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAULTA — Seat Gap Organizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #080a0d;
+    --charcoal: #111418;
+    --surface: #161b22;
+    --surface-2: #1e2530;
+    --border: rgba(255,255,255,0.07);
+    --border-bright: rgba(255,255,255,0.14);
+    --text: #f0ede8;
+    --text-muted: #7a8394;
+    --text-dim: #3d4654;
+    --accent: #4f9fff;
+    --accent-glow: rgba(79,159,255,0.18);
+    --accent-2: #c8b8ff;
+    --gold: #d4a853;
+    --gold-dim: rgba(212,168,83,0.12);
+    --white-glow: rgba(255,255,255,0.06);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--black);
+    color: var(--text);
+    overflow-x: hidden;
+    cursor: default;
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 0 48px;
+    height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(8,10,13,0.72);
+    backdrop-filter: blur(24px) saturate(160%);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s;
+  }
+  .nav-logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.18em;
+    color: var(--text); text-decoration: none;
+  }
+  .nav-logo span { color: var(--accent); }
+  .nav-links { display: flex; gap: 36px; list-style: none; }
+  .nav-links a {
+    font-size: 13px; font-weight: 400; letter-spacing: 0.08em;
+    color: var(--text-muted); text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    padding: 9px 22px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    background: var(--accent); color: #fff; border: none; cursor: pointer;
+    transition: opacity 0.2s, box-shadow 0.2s;
+    box-shadow: 0 0 18px rgba(79,159,255,0.35);
+    letter-spacing: 0.04em;
+  }
+  .nav-cta:hover { opacity: 0.88; box-shadow: 0 0 28px rgba(79,159,255,0.5); }
+
+  /* ─── HERO ─── */
+  .hero {
+    min-height: 100vh;
+    display: grid; grid-template-columns: 1fr 1fr;
+    align-items: center; gap: 0;
+    padding: 120px 80px 80px;
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 700px 600px at 70% 50%, rgba(79,159,255,0.055) 0%, transparent 70%),
+      radial-gradient(ellipse 500px 400px at 20% 80%, rgba(200,184,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 2; }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 100px;
+    border: 1px solid var(--border-bright);
+    background: var(--white-glow);
+    font-size: 11px; font-weight: 500; letter-spacing: 0.14em;
+    color: var(--text-muted); text-transform: uppercase;
+    margin-bottom: 32px;
+    opacity: 0; transform: translateY(16px);
+    animation: fadeUp 0.8s 0.1s forwards;
+  }
+  .hero-tag::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  }
+  .hero-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(48px, 5.5vw, 76px); font-weight: 300;
+    line-height: 1.05; letter-spacing: -0.01em;
+    color: var(--text); margin-bottom: 8px;
+    opacity: 0; transform: translateY(20px);
+    animation: fadeUp 0.9s 0.2s forwards;
+  }
+  .hero-title strong { font-weight: 700; }
+  .hero-title em {
+    font-style: italic; color: var(--accent);
+  }
+  .hero-sub {
+    font-size: 16px; font-weight: 300; color: var(--text-muted);
+    line-height: 1.7; max-width: 420px; margin: 24px 0 48px;
+    opacity: 0; transform: translateY(20px);
+    animation: fadeUp 0.9s 0.35s forwards;
+  }
+  .hero-price-row {
+    display: flex; align-items: baseline; gap: 16px; margin-bottom: 40px;
+    opacity: 0; transform: translateY(20px);
+    animation: fadeUp 0.9s 0.45s forwards;
+  }
+  .hero-price {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 52px; font-weight: 700; color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .hero-price-orig {
+    font-size: 20px; color: var(--text-dim); text-decoration: line-through;
+  }
+  .hero-price-badge {
+    padding: 4px 10px; border-radius: 5px;
+    background: var(--gold-dim); border: 1px solid rgba(212,168,83,0.25);
+    font-size: 12px; font-weight: 500; color: var(--gold);
+    letter-spacing: 0.06em;
+  }
+  .hero-actions {
+    display: flex; gap: 16px; align-items: center;
+    opacity: 0; transform: translateY(20px);
+    animation: fadeUp 0.9s 0.55s forwards;
+  }
+  .btn-primary {
+    padding: 16px 40px; border-radius: 8px; font-size: 15px; font-weight: 500;
+    background: var(--accent); color: #fff; border: none; cursor: pointer;
+    transition: all 0.25s; letter-spacing: 0.04em;
+    box-shadow: 0 4px 32px rgba(79,159,255,0.4);
+    position: relative; overflow: hidden;
+  }
+  .btn-primary::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.14) 50%, transparent 70%);
+    transform: translateX(-100%); transition: transform 0.5s;
+  }
+  .btn-primary:hover::after { transform: translateX(100%); }
+  .btn-primary:hover { box-shadow: 0 6px 40px rgba(79,159,255,0.55); transform: translateY(-1px); }
+  .btn-secondary {
+    padding: 16px 32px; border-radius: 8px; font-size: 15px; font-weight: 400;
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border-bright); cursor: pointer;
+    transition: all 0.25s; letter-spacing: 0.04em;
+  }
+  .btn-secondary:hover { color: var(--text); border-color: rgba(255,255,255,0.28); }
+
+  /* ─── HERO IMAGE ─── */
+  .hero-visual {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    opacity: 0; animation: fadeIn 1.2s 0.4s forwards;
+  }
+  .hero-visual-ring {
+    position: absolute; border-radius: 50%;
+    border: 1px solid var(--border);
+    animation: spin 18s linear infinite;
+  }
+  .hero-visual-ring:nth-child(1) { width: 480px; height: 480px; }
+  .hero-visual-ring:nth-child(2) { width: 360px; height: 360px; animation-duration: 12s; animation-direction: reverse; }
+  .hero-img-wrap {
+    position: relative; z-index: 2;
+    width: 340px; height: 420px;
+    border-radius: 24px; overflow: hidden;
+    border: 1px solid var(--border-bright);
+    box-shadow:
+      0 40px 100px rgba(0,0,0,0.7),
+      0 0 0 1px rgba(255,255,255,0.04),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    animation: float 6s ease-in-out infinite;
+  }
+  .hero-img-bg {
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 40% 30%, rgba(79,159,255,0.12) 0%, transparent 60%),
+      linear-gradient(160deg, #1a2236 0%, #0d1119 40%, #0a0e15 100%);
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    padding: 32px;
+    position: relative;
+  }
+  /* Decorative product illustration */
+  .product-svg { width: 200px; drop-shadow: 0 10px 40px rgba(79,159,255,0.3); }
+  .product-label {
+    margin-top: 20px; font-size: 11px; letter-spacing: 0.2em;
+    color: var(--text-dim); text-transform: uppercase;
+  }
+  .hero-badge-float {
+    position: absolute; right: -28px; top: 60px;
+    background: rgba(22,27,34,0.9); backdrop-filter: blur(12px);
+    border: 1px solid var(--border-bright); border-radius: 12px;
+    padding: 12px 16px; min-width: 140px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .hero-badge-float .bf-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+  .hero-badge-float .bf-val { font-size: 16px; font-weight: 500; color: var(--text); }
+  .hero-badge-float2 {
+    position: absolute; left: -32px; bottom: 80px;
+    background: rgba(22,27,34,0.9); backdrop-filter: blur(12px);
+    border: 1px solid var(--border-bright); border-radius: 12px;
+    padding: 12px 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .star-row { color: var(--gold); font-size: 13px; letter-spacing: 2px; }
+
+  /* ─── SECTION BASE ─── */
+  section { padding: 120px 80px; position: relative; }
+  .section-label {
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent); font-weight: 500; margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(36px, 4vw, 56px); font-weight: 300; line-height: 1.1;
+    color: var(--text); max-width: 560px;
+  }
+  .section-title strong { font-weight: 700; }
+
+  /* ─── BENEFITS ─── */
+  .benefits { background: var(--charcoal); }
+  .benefits-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+    margin-top: 64px;
+    border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  }
+  .benefit-card {
+    padding: 40px 32px; background: var(--surface);
+    transition: background 0.3s;
+    position: relative; overflow: hidden;
+  }
+  .benefit-card::after {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, var(--accent-glow) 0%, transparent 70%);
+    opacity: 0; transition: opacity 0.4s;
+  }
+  .benefit-card:hover { background: var(--surface-2); }
+  .benefit-card:hover::after { opacity: 1; }
+  .benefit-icon {
+    width: 48px; height: 48px; margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px; background: var(--white-glow);
+    border: 1px solid var(--border-bright);
+    font-size: 22px;
+  }
+  .benefit-name {
+    font-size: 17px; font-weight: 500; color: var(--text); margin-bottom: 10px;
+  }
+  .benefit-desc { font-size: 14px; font-weight: 300; color: var(--text-muted); line-height: 1.65; }
+
+  /* ─── SHOWCASE ─── */
+  .showcase {
+    background: var(--black);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+  }
+  .showcase-visual {
+    position: relative; border-radius: 24px; overflow: visible;
+  }
+  .showcase-img {
+    width: 100%; border-radius: 24px; aspect-ratio: 3/4; object-fit: cover;
+    background: linear-gradient(135deg, #0f1622 0%, #1a2a40 50%, #0d1420 100%);
+    border: 1px solid var(--border-bright);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 60px rgba(79,159,255,0.07);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .showcase-img svg { width: 60%; }
+  .showcase-glow {
+    position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 80px;
+    background: radial-gradient(ellipse, rgba(79,159,255,0.25) 0%, transparent 70%);
+    filter: blur(20px); pointer-events: none;
+  }
+  .showcase-content { position: relative; }
+  .showcase-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; }
+  .stat-box {
+    padding: 24px; border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .stat-box:hover { border-color: var(--border-bright); background: var(--surface-2); }
+  .stat-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 36px; font-weight: 700; color: var(--accent);
+    letter-spacing: -0.02em; line-height: 1;
+  }
+  .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; font-weight: 300; }
+
+  /* ─── FEATURES ─── */
+  .features { background: var(--charcoal); }
+  .features-header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 72px;
+  }
+  .features-list { display: flex; flex-direction: column; gap: 2px; }
+  .feature-item {
+    display: grid; grid-template-columns: 56px 1fr auto;
+    align-items: center; gap: 32px;
+    padding: 32px 40px; background: var(--surface);
+    border-radius: 0; transition: background 0.25s;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer; position: relative; overflow: hidden;
+  }
+  .feature-item:first-child { border-radius: 16px 16px 0 0; }
+  .feature-item:last-child { border-radius: 0 0 16px 16px; border-bottom: none; }
+  .feature-item::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--accent); transform: scaleY(0); transition: transform 0.3s;
+  }
+  .feature-item:hover { background: var(--surface-2); }
+  .feature-item:hover::before { transform: scaleY(1); }
+  .feature-num { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 700; color: var(--text-dim); }
+  .feature-body .f-title { font-size: 18px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .feature-body .f-desc { font-size: 14px; font-weight: 300; color: var(--text-muted); line-height: 1.6; }
+  .feature-icon-big { font-size: 28px; opacity: 0.5; }
+
+  /* ─── REVIEWS ─── */
+  .reviews { background: var(--black); }
+  .reviews-meta {
+    display: flex; align-items: center; gap: 32px; margin: 48px 0 56px;
+    padding: 28px 32px; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .reviews-score { text-align: center; }
+  .reviews-score .score-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 64px; font-weight: 700; color: var(--text); line-height: 1;
+  }
+  .reviews-score .score-stars { color: var(--gold); font-size: 18px; letter-spacing: 3px; margin: 4px 0; }
+  .reviews-score .score-count { font-size: 13px; color: var(--text-muted); }
+  .reviews-divider { width: 1px; height: 80px; background: var(--border); }
+  .reviews-bars { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; }
+  .bar-label { font-size: 12px; color: var(--text-muted); width: 32px; text-align: right; }
+  .bar-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 1.5s cubic-bezier(0.25,1,0.5,1); }
+  .bar-count { font-size: 12px; color: var(--text-dim); width: 24px; }
+  .reviews-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .review-card {
+    padding: 28px; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    transition: all 0.3s; position: relative; overflow: hidden;
+  }
+  .review-card::before {
+    content: '"'; position: absolute; top: 12px; right: 20px;
+    font-family: 'Cormorant Garamond', serif; font-size: 80px;
+    color: var(--border); line-height: 1;
+  }
+  .review-card:hover { border-color: var(--border-bright); transform: translateY(-3px); box-shadow: 0 16px 40px rgba(0,0,0,0.4); }
+  .review-stars { color: var(--gold); font-size: 13px; letter-spacing: 2px; margin-bottom: 14px; }
+  .review-text { font-size: 15px; color: var(--text-muted); line-height: 1.7; font-weight: 300; margin-bottom: 20px; }
+  .review-author { display: flex; align-items: center; gap: 12px; }
+  .review-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; color: #fff;
+  }
+  .review-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .review-verified { font-size: 11px; color: var(--accent); margin-top: 1px; letter-spacing: 0.06em; }
+
+  /* ─── STICKY BAR ─── */
+  .sticky-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: rgba(17,20,24,0.92);
+    backdrop-filter: blur(24px) saturate(160%);
+    border-top: 1px solid var(--border-bright);
+    padding: 16px 80px;
+    display: flex; align-items: center; justify-content: space-between;
+    transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 -20px 60px rgba(0,0,0,0.5);
+  }
+  .sticky-bar.visible { transform: translateY(0); }
+  .sticky-product { display: flex; align-items: center; gap: 20px; }
+  .sticky-dot { width: 40px; height: 40px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border-bright);
+    display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .sticky-name { font-size: 16px; font-weight: 500; color: var(--text); }
+  .sticky-price { font-size: 14px; color: var(--text-muted); margin-top: 2px; }
+  .sticky-actions { display: flex; align-items: center; gap: 16px; }
+  .qty-control {
+    display: flex; align-items: center; gap: 0;
+    border: 1px solid var(--border-bright); border-radius: 8px; overflow: hidden;
+  }
+  .qty-btn {
+    width: 36px; height: 36px; background: var(--surface-2); border: none;
+    color: var(--text); font-size: 18px; cursor: pointer; transition: background 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qty-btn:hover { background: var(--surface); }
+  .qty-num { width: 36px; text-align: center; font-size: 15px; font-weight: 500; color: var(--text); }
+  .sticky-buy {
+    padding: 12px 32px; border-radius: 8px; background: var(--accent); color: #fff;
+    border: none; font-size: 14px; font-weight: 500; cursor: pointer;
+    box-shadow: 0 0 20px rgba(79,159,255,0.35); transition: all 0.25s; letter-spacing: 0.04em;
+  }
+  .sticky-buy:hover { box-shadow: 0 0 32px rgba(79,159,255,0.5); transform: translateY(-1px); }
+
+  /* ─── FOOTER ─── */
+  footer {
+    padding: 60px 80px 80px;
+    border-top: 1px solid var(--border);
+    background: var(--charcoal);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 700; color: var(--text); }
+  .footer-brand span { color: var(--accent); }
+  .footer-copy { font-size: 13px; color: var(--text-dim); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .reveal {
+    opacity: 0; transform: translateY(32px);
+    transition: opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1);
+  }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-delay-1 { transition-delay: 0.1s; }
+  .reveal-delay-2 { transition-delay: 0.2s; }
+  .reveal-delay-3 { transition-delay: 0.3s; }
+  .reveal-delay-4 { transition-delay: 0.4s; }
+
+  /* ─── MOBILE ─── */
+  @media (max-width: 900px) {
+    nav { padding: 0 24px; }
+    .nav-links { display: none; }
+    .hero { grid-template-columns: 1fr; padding: 100px 24px 60px; gap: 60px; }
+    .hero-visual { order: -1; }
+    .hero-img-wrap { width: 260px; height: 320px; }
+    .hero-visual-ring:nth-child(1) { width: 340px; height: 340px; }
+    .hero-visual-ring:nth-child(2) { width: 260px; height: 260px; }
+    .hero-badge-float { right: 0; }
+    .hero-badge-float2 { left: 0; }
+    section { padding: 80px 24px; }
+    .benefits-grid { grid-template-columns: 1fr 1fr; }
+    .showcase { grid-template-columns: 1fr; gap: 48px; }
+    .features-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .feature-item { grid-template-columns: 40px 1fr; gap: 16px; padding: 24px; }
+    .feature-icon-big { display: none; }
+    .reviews-grid { grid-template-columns: 1fr; }
+    .reviews-meta { flex-direction: column; gap: 20px; }
+    .reviews-divider { width: 80px; height: 1px; }
+    .sticky-bar { padding: 12px 24px; }
+    footer { flex-direction: column; gap: 24px; text-align: center; }
+    .footer-links { justify-content: center; flex-wrap: wrap; }
+  }
+
+  @media (max-width: 600px) {
+    .benefits-grid { grid-template-columns: 1fr; }
+    .reviews-meta { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">VAU<span>L</span>TA</a>
+  <ul class="nav-links">
+    <li><a href="#benefits">Benefits</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#reviews">Reviews</a></li>
+  </ul>
+  <button class="nav-cta" onclick="scrollBuy()">Buy Now — $89</button>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-content">
+    <div class="hero-tag">Premium Car Accessories</div>
+    <h1 class="hero-title">
+      The Seat Gap<br><em>Reimagined.</em>
+    </h1>
+    <p class="hero-sub">
+      The VAULTA Seat Gap Organizer transforms the wasted space beside your seat into a precision-crafted command center — leather-wrapped, magnetically secured, and engineered for the discerning driver.
+    </p>
+    <div class="hero-price-row">
+      <span class="hero-price">$89</span>
+      <span class="hero-price-orig">$129</span>
+      <span class="hero-price-badge">31% OFF</span>
+    </div>
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="scrollBuy()">Buy Now</button>
+      <button class="btn-secondary" onclick="document.querySelector('#features').scrollIntoView({behavior:'smooth'})">Learn More</button>
+    </div>
+  </div>
+
+  <div class="hero-visual">
+    <div class="hero-visual-ring"></div>
+    <div class="hero-visual-ring"></div>
+    <div class="hero-img-wrap">
+      <div class="hero-img-bg">
+        <svg class="product-svg" viewBox="0 0 200 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Main body -->
+          <rect x="40" y="20" width="120" height="220" rx="16" fill="url(#bodyGrad)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+          <!-- Leather texture lines -->
+          <line x1="40" y1="80" x2="160" y2="80" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+          <line x1="40" y1="160" x2="160" y2="160" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+          <!-- Pocket 1 -->
+          <rect x="52" y="30" width="96" height="40" rx="8" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <!-- Phone outline in pocket 1 -->
+          <rect x="68" y="36" width="26" height="28" rx="4" fill="rgba(79,159,255,0.15)" stroke="rgba(79,159,255,0.4)" stroke-width="1"/>
+          <rect x="72" y="40" width="18" height="16" rx="2" fill="rgba(79,159,255,0.2)"/>
+          <!-- Card slots -->
+          <rect x="52" y="90" width="96" height="12" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <rect x="52" y="108" width="96" height="12" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <rect x="52" y="126" width="96" height="12" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <!-- Pocket 2 -->
+          <rect x="52" y="170" width="96" height="58" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <!-- Hook -->
+          <rect x="82" y="10" width="36" height="16" rx="8" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <!-- Accent line -->
+          <rect x="40" y="156" width="120" height="3" rx="1.5" fill="url(#accentGrad)"/>
+          <!-- Logo dot -->
+          <circle cx="100" cy="210" r="8" fill="rgba(79,159,255,0.2)" stroke="rgba(79,159,255,0.5)" stroke-width="1"/>
+          <circle cx="100" cy="210" r="3" fill="rgba(79,159,255,0.8)"/>
+          <defs>
+            <linearGradient id="bodyGrad" x1="40" y1="20" x2="160" y2="240" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#1e2a3d"/>
+              <stop offset="100%" stop-color="#0d1520"/>
+            </linearGradient>
+            <linearGradient id="accentGrad" x1="40" y1="0" x2="160" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="transparent"/>
+              <stop offset="30%" stop-color="#4f9fff"/>
+              <stop offset="70%" stop-color="#4f9fff"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <p class="product-label">Vaulta Pro</p>
+      </div>
+    </div>
+    <div class="hero-badge-float">
+      <div class="bf-label">Material</div>
+      <div class="bf-val">Full-Grain Leather</div>
+    </div>
+    <div class="hero-badge-float2">
+      <div>
+        <div class="star-row">★★★★★</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">2,841 reviews</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BENEFITS -->
+<section class="benefits" id="benefits">
+  <div class="section-label reveal">Why VAULTA</div>
+  <h2 class="section-title reveal reveal-delay-1">Engineered for the <strong>modern driver.</strong></h2>
+  <div class="benefits-grid">
+    <div class="benefit-card reveal">
+      <div class="benefit-icon">🧲</div>
+      <div class="benefit-name">Magnetic Lock System</div>
+      <div class="benefit-desc">Rare-earth magnets keep your organizer perfectly anchored, eliminating any shift or rattle at highway speeds.</div>
+    </div>
+    <div class="benefit-card reveal reveal-delay-1">
+      <div class="benefit-icon">🪡</div>
+      <div class="benefit-name">Full-Grain Leather</div>
+      <div class="benefit-desc">Premium top-grain leather exterior with microfiber lining — the same material found in luxury European interiors.</div>
+    </div>
+    <div class="benefit-card reveal reveal-delay-2">
+      <div class="benefit-icon">📱</div>
+      <div class="benefit-name">Universal Fit</div>
+      <div class="benefit-desc">Precision-adjustable mounting system fits virtually any vehicle — sedan, SUV, or truck — in under 60 seconds.</div>
+    </div>
+    <div class="benefit-card reveal reveal-delay-3">
+      <div class="benefit-icon">⚡</div>
+      <div class="benefit-name">Wireless Charging</div>
+      <div class="benefit-desc">Built-in 15W Qi charging pad keeps your device powered without cluttering your cabin with cables.</div>
+    </div>
+  </div>
+</section>
+
+<!-- SHOWCASE -->
+<section class="showcase" id="showcase">
+  <div class="showcase-visual reveal">
+    <div class="showcase-img">
+      <svg viewBox="0 0 300 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Seat suggestion -->
+        <rect x="20" y="60" width="80" height="320" rx="12" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <!-- Organizer -->
+        <rect x="115" y="40" width="130" height="340" rx="18" fill="url(#showcaseGrad)" stroke="rgba(79,159,255,0.25)" stroke-width="1.5"/>
+        <!-- Pockets -->
+        <rect x="127" y="52" width="106" height="120" rx="10" fill="rgba(79,159,255,0.07)" stroke="rgba(79,159,255,0.15)" stroke-width="1"/>
+        <!-- Phone mock -->
+        <rect x="140" y="64" width="50" height="90" rx="8" fill="rgba(79,159,255,0.12)" stroke="rgba(79,159,255,0.35)" stroke-width="1"/>
+        <rect x="146" y="72" width="38" height="58" rx="4" fill="rgba(79,159,255,0.18)"/>
+        <circle cx="165" cy="144" r="4" fill="rgba(79,159,255,0.5)"/>
+        <!-- Card slots -->
+        <rect x="127" y="186" width="106" height="16" rx="5" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <rect x="127" y="208" width="106" height="16" rx="5" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <rect x="127" y="230" width="106" height="16" rx="5" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <!-- Large pocket -->
+        <rect x="127" y="262" width="106" height="100" rx="10" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+        <!-- Wireless charge indicator -->
+        <circle cx="180" cy="312" r="20" fill="none" stroke="rgba(79,159,255,0.2)" stroke-width="2" stroke-dasharray="4 3"/>
+        <circle cx="180" cy="312" r="8" fill="rgba(79,159,255,0.15)" stroke="rgba(79,159,255,0.5)" stroke-width="1"/>
+        <text x="178" y="317" fill="rgba(79,159,255,0.8)" font-size="10" text-anchor="middle">⚡</text>
+        <!-- Accent stripe -->
+        <rect x="115" y="175" width="130" height="3" rx="1.5" fill="url(#accentGrad2)"/>
+        <!-- Mounting clip -->
+        <rect x="88" y="100" width="32" height="60" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <rect x="95" y="114" width="18" height="32" rx="5" fill="rgba(255,255,255,0.06)"/>
+        <defs>
+          <linearGradient id="showcaseGrad" x1="115" y1="40" x2="245" y2="380" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#1a2640"/>
+            <stop offset="100%" stop-color="#0c1420"/>
+          </linearGradient>
+          <linearGradient id="accentGrad2" x1="115" y1="0" x2="245" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="transparent"/>
+            <stop offset="30%" stop-color="#4f9fff"/>
+            <stop offset="70%" stop-color="#4f9fff"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <div class="showcase-glow"></div>
+  </div>
+
+  <div class="showcase-content">
+    <div class="section-label reveal">The Details</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Precision in every <strong>millimeter.</strong>
+    </h2>
+    <p class="reveal reveal-delay-2" style="font-size:15px;color:var(--text-muted);line-height:1.8;margin-top:20px;font-weight:300;">
+      We spent 18 months refining the gap between concept and perfection. Every stitch, every slot, every magnetic click — obsessively tested across 47 vehicle models.
+    </p>
+    <div class="showcase-stat-grid reveal reveal-delay-3">
+      <div class="stat-box">
+        <div class="stat-num">47</div>
+        <div class="stat-label">Vehicle models tested</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">18mo</div>
+        <div class="stat-label">Development period</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">15W</div>
+        <div class="stat-label">Wireless charging power</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">8</div>
+        <div class="stat-label">Storage compartments</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="features-header">
+    <div>
+      <div class="section-label reveal">What's Inside</div>
+      <h2 class="section-title reveal reveal-delay-1">Every feature,<br><strong>deliberate.</strong></h2>
+    </div>
+    <p class="reveal" style="font-size:14px;color:var(--text-muted);max-width:280px;line-height:1.7;font-weight:300;text-align:right;">
+      Nothing added without purpose. Nothing missing that matters.
+    </p>
+  </div>
+  <div class="features-list">
+    <div class="feature-item reveal">
+      <div class="feature-num">01</div>
+      <div class="feature-body">
+        <div class="f-title">Full-Grain Leather Exterior</div>
+        <div class="f-desc">Hand-stitched in Tuscany with top-grain cowhide — develops a rich patina over time, improving with age like fine luggage.</div>
+      </div>
+      <div class="feature-icon-big">🇮🇹</div>
+    </div>
+    <div class="feature-item reveal reveal-delay-1">
+      <div class="feature-num">02</div>
+      <div class="feature-body">
+        <div class="f-title">15W Qi Wireless Charging</div>
+        <div class="f-desc">MagSafe-compatible fast charging pad built into the primary pocket. Works through most phone cases up to 5mm thick.</div>
+      </div>
+      <div class="feature-icon-big">⚡</div>
+    </div>
+    <div class="feature-item reveal reveal-delay-2">
+      <div class="feature-num">03</div>
+      <div class="feature-body">
+        <div class="f-title">Rare-Earth Magnetic Mount</div>
+        <div class="f-desc">N52 neodymium magnets provide 18lbs of holding force per side — silent, secure, and completely non-damaging to your seat.</div>
+      </div>
+      <div class="feature-icon-big">🧲</div>
+    </div>
+    <div class="feature-item reveal reveal-delay-3">
+      <div class="feature-num">04</div>
+      <div class="feature-body">
+        <div class="f-title">8-Compartment Organization System</div>
+        <div class="f-desc">One phone pocket, three card slots, two pen loops, one document sleeve, and one deep utility pouch — everything within reach.</div>
+      </div>
+      <div class="feature-icon-big">🗂️</div>
+    </div>
+    <div class="feature-item reveal reveal-delay-4">
+      <div class="feature-num">05</div>
+      <div class="feature-body">
+        <div class="f-title">Zero-Rattle Guarantee</div>
+        <div class="f-desc">Vibration-dampening silicone bumpers on all mounting surfaces ensure a perfectly silent experience at any speed.</div>
+      </div>
+      <div class="feature-icon-big">🔇</div>
+    </div>
+  </div>
+</section>
+
+<!-- REVIEWS -->
+<section class="reviews" id="reviews">
+  <div class="section-label reveal">Customer Reviews</div>
+  <h2 class="section-title reveal reveal-delay-1">Trusted by <strong>thousands.</strong></h2>
+
+  <div class="reviews-meta reveal reveal-delay-2">
+    <div class="reviews-score">
+      <div class="score-num">4.9</div>
+      <div class="score-stars">★★★★★</div>
+      <div class="score-count">2,841 verified reviews</div>
+    </div>
+    <div class="reviews-divider"></div>
+    <div class="reviews-bars">
+      <div class="bar-row">
+        <span class="bar-label">5★</span>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="92%"></div></div>
+        <span class="bar-count">92%</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">4★</span>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="5%"></div></div>
+        <span class="bar-count">5%</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">3★</span>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="2%"></div></div>
+        <span class="bar-count">2%</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">2★</span>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="1%"></div></div>
+        <span class="bar-count">1%</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">1★</span>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-width="0%"></div></div>
+        <span class="bar-count">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="reviews-grid">
+    <div class="review-card reveal">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">Honestly didn't expect much but this thing is exceptional. The leather feels luxurious — my passengers always comment on it. The wireless charging actually works reliably too.</p>
+      <div class="review-author">
+        <div class="review-avatar">MR</div>
+        <div>
+          <div class="review-name">Marcus R.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal reveal-delay-1">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">I drive a Tesla Model 3 and this fits perfectly — no wobble, no noise. It's like it was designed specifically for my car. Bought a second one for my wife's BMW.</p>
+      <div class="review-author">
+        <div class="review-avatar">JL</div>
+        <div>
+          <div class="review-name">Jennifer L.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal reveal-delay-2">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">I've tried four different gap organizers and this is the first one I've kept. The magnetic mount is genuinely strong. Worth every cent of the premium price.</p>
+      <div class="review-author">
+        <div class="review-avatar">DK</div>
+        <div>
+          <div class="review-name">David K.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">Installed it in under a minute. My car looks so much cleaner and more organized now. The leather even matches my interior almost perfectly.</p>
+      <div class="review-author">
+        <div class="review-avatar">SA</div>
+        <div>
+          <div class="review-name">Sofia A.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal reveal-delay-1">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">The wireless charging alone is worth it. I kept dropping my phone in the seat gap while driving — never again. Couldn't live without this now.</p>
+      <div class="review-author">
+        <div class="review-avatar">BT</div>
+        <div>
+          <div class="review-name">Brian T.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal reveal-delay-2">
+      <div class="review-stars">★★★★☆</div>
+      <p class="review-text">Genuinely premium product. The only reason for 4 stars instead of 5 is that I wish it came in a tan leather colorway. Will definitely re-order when they expand colors.</p>
+      <div class="review-author">
+        <div class="review-avatar">NP</div>
+        <div>
+          <div class="review-name">Nicole P.</div>
+          <div class="review-verified">✓ Verified Buyer</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">VAU<span>L</span>TA</div>
+  <ul class="footer-links">
+    <li><a href="#">Privacy</a></li>
+    <li><a href="#">Terms</a></li>
+    <li><a href="#">Shipping</a></li>
+    <li><a href="#">Returns</a></li>
+    <li><a href="#">Contact</a></li>
+  </ul>
+  <div class="footer-copy">© 2025 Vaulta Co. All rights reserved.</div>
+</footer>
+
+<!-- STICKY ADD-TO-CART -->
+<div class="sticky-bar" id="stickyBar">
+  <div class="sticky-product">
+    <div class="sticky-dot">🧲</div>
+    <div>
+      <div class="sticky-name">VAULTA Seat Gap Organizer</div>
+      <div class="sticky-price">Full-Grain Leather · Wireless Charging</div>
+    </div>
+  </div>
+  <div class="sticky-actions">
+    <div class="qty-control">
+      <button class="qty-btn" onclick="changeQty(-1)">−</button>
+      <div class="qty-num" id="qtyNum">1</div>
+      <button class="qty-btn" onclick="changeQty(1)">+</button>
+    </div>
+    <button class="sticky-buy" onclick="addToCart()">Add to Cart — $89</button>
+  </div>
+</div>
+
+<script>
+  // ── Intersection observer for reveal animations
+  const reveals = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.12 });
+  reveals.forEach(el => io.observe(el));
+
+  // ── Sticky bar
+  const stickyBar = document.getElementById('stickyBar');
+  const heroSection = document.querySelector('.hero');
+  window.addEventListener('scroll', () => {
+    const heroBottom = heroSection.getBoundingClientRect().bottom;
+    stickyBar.classList.toggle('visible', heroBottom < 0);
+  });
+
+  // ── Rating bars animate on reveal
+  const barsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.querySelectorAll('.bar-fill').forEach(bar => {
+          bar.style.width = bar.dataset.width;
+        });
+        barsObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  const reviewsMeta = document.querySelector('.reviews-meta');
+  if (reviewsMeta) barsObserver.observe(reviewsMeta);
+
+  // ── Qty control
+  let qty = 1;
+  function changeQty(delta) {
+    qty = Math.max(1, Math.min(10, qty + delta));
+    document.getElementById('qtyNum').textContent = qty;
+  }
+
+  // ── Scroll to buy
+  function scrollBuy() {
+    document.getElementById('reviews').scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => {
+      stickyBar.classList.add('visible');
+      stickyBar.style.boxShadow = '0 -4px 40px rgba(79,159,255,0.3)';
+      setTimeout(() => { stickyBar.style.boxShadow = ''; }, 800);
+    }, 600);
+  }
+
+  // ── Add to cart feedback
+  function addToCart() {
+    const btn = document.querySelector('.sticky-buy');
+    btn.textContent = '✓ Added!';
+    btn.style.background = '#2d9a3e';
+    btn.style.boxShadow = '0 0 24px rgba(45,154,62,0.4)';
+    setTimeout(() => {
+      btn.textContent = `Add to Cart — $${89 * qty}`;
+      btn.style.background = '';
+      btn.style.boxShadow = '';
+    }, 1800);
+  }
+
+  // ── Parallax on hero rings
+  window.addEventListener('mousemove', (e) => {
+    const x = (e.clientX / window.innerWidth - 0.5) * 18;
+    const y = (e.clientY / window.innerHeight - 0.5) * 18;
+    const rings = document.querySelectorAll('.hero-visual-ring');
+    rings.forEach((r, i) => {
+      r.style.transform = `rotate(${(i * 180)}deg) translate(${x * (i + 1) * 0.4}px, ${y * (i + 1) * 0.4}px)`;
+    });
+  });
+</script>
+</body>
+</html>
