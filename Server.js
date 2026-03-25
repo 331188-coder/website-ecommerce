@@ -1,387 +1,226 @@
-// 0. Create PaymentIntent for Stripe EMBEDDED components
-//    The frontend Payment Element uses this (no redirect needed)
-app.post('/api/stripe/create-payment-intent', async (req, res) => {
-  try {
-    const { color, qty } = req.body;
-    const amount = 1900 * (parseInt(qty) || 1); // $19 per unit in cents
-
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: 'usd',
-      automatic_payment_methods: { enabled: true }, // enables card, Apple Pay, Google Pay
-      metadata: { color, qty: String(qty || 1), product: 'CARVAULT Seat Organizer' },
-      description: `CARVAULT Seat Organizer — ${color} x${qty || 1}`,
-    });
-
-    res.json({ clientSecret: paymentIntent.client_secret });
-  } catch (err) {
-    console.error('PaymentIntent error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Also listen for payment_intent.succeeded webhook event
-// Add 'payment_intent.succeeded' to your Stripe webhook events list
-
 // ============================================================
 // CARVAULT BACKEND — server.js
-// Handles: Stripe payments, PayPal payments, order emails,
-//          AliExpress order webhook notifications
-//
-// SETUP (run these commands in your terminal):
-//   npm init -y
-//   npm install express stripe @paypal/checkout-server-sdk nodemailer cors dotenv
-//   node server.js
+// Stripe Embedded + PayPal + Full customer address collection
+// Order emails to you + customer confirmation
 // ============================================================
-
 require('dotenv').config();
+
 const express    = require('express');
 const stripe     = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const paypal     = require('@paypal/checkout-server-sdk');
 const nodemailer = require('nodemailer');
 const cors       = require('cors');
+const path       = require('path');
+const fs         = require('fs');
 
 const app = express();
 
-// ── CORS — allow your frontend domain ──────────────────────
+// CORS — allow your Firebase + custom domain
 app.use(cors({
   origin: [
+    'http://localhost:5000',
     'http://localhost:3000',
-    'https://carvault.com',       // ← replace with your domain
+    'https://carvault.web.app',
+    'https://carvault.firebaseapp.com',
+    'https://carvault.com',
     'https://www.carvault.com',
   ]
 }));
 
-// ── Raw body needed for Stripe webhook signature check ──────
 app.use('/webhook/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-// ── Serve your frontend HTML ────────────────────────────────
-const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ============================================================
-// PAYPAL SETUP
-// ============================================================
-function getPayPalClient() {
-  const env = process.env.NODE_ENV === 'production'
-    ? new paypal.core.LiveEnvironment(
-        process.env.PAYPAL_CLIENT_ID,
-        process.env.PAYPAL_CLIENT_SECRET
-      )
-    : new paypal.core.SandboxEnvironment(
-        process.env.PAYPAL_CLIENT_ID,
-        process.env.PAYPAL_CLIENT_SECRET
-      );
+// ── PAYPAL ───────────────────────────────────────────────────
+function paypalClient() {
+  const isLive = process.env.NODE_ENV === 'production';
+  const env = isLive
+    ? new paypal.core.LiveEnvironment(process.env.PAYPAL_CLIENT_ID, process.env.PAYPAL_CLIENT_SECRET)
+    : new paypal.core.SandboxEnvironment(process.env.PAYPAL_CLIENT_ID, process.env.PAYPAL_CLIENT_SECRET);
   return new paypal.core.PayPalHttpClient(env);
 }
 
-// ============================================================
-// EMAIL SETUP (Gmail example — works with any SMTP)
-// ============================================================
+// ── EMAIL ────────────────────────────────────────────────────
 const mailer = nodemailer.createTransport({
   service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_FROM,     // your Gmail address
-    pass: process.env.EMAIL_PASSWORD, // Gmail App Password (not your login password)
-                                      // Generate at: myaccount.google.com/apppasswords
-  }
+  auth: { user: process.env.EMAIL_FROM, pass: process.env.EMAIL_PASSWORD }
 });
 
+function genOrderId() {
+  return 'CV-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,5).toUpperCase();
+}
+
+function saveOrder(order) {
+  const file = path.join(__dirname, 'orders.json');
+  let orders = [];
+  try { if (fs.existsSync(file)) orders = JSON.parse(fs.readFileSync(file,'utf8')); } catch(e){}
+  orders.unshift(order);
+  fs.writeFileSync(file, JSON.stringify(orders, null, 2));
+}
+
 async function sendOrderEmail(order) {
-  // Email to YOU (store owner)
+  const addr = [order.address.line1, order.address.line2, order.address.city,
+    order.address.state, order.address.postal_code, order.address.country].filter(Boolean).join(', ');
+
+  // Email to YOU
   await mailer.sendMail({
     from: process.env.EMAIL_FROM,
-    to:   process.env.EMAIL_OWNER,
-    subject: `🛒 New CARVAULT Order — $${order.amount} — ${order.color}`,
-    html: `
-      <h2>New Order!</h2>
-      <p><strong>Product:</strong> CARVAULT Seat Gap Organizer — ${order.color}</p>
-      <p><strong>Qty:</strong> ${order.qty}</p>
-      <p><strong>Amount:</strong> $${order.amount}</p>
-      <p><strong>Customer:</strong> ${order.customerName}</p>
-      <p><strong>Email:</strong> ${order.customerEmail}</p>
-      <p><strong>Ship to:</strong><br>
-        ${order.address.line1}<br>
-        ${order.address.city}, ${order.address.state} ${order.address.postal_code}<br>
-        ${order.address.country}
-      </p>
-      <p><strong>Payment ID:</strong> ${order.paymentId}</p>
-      <hr>
-      <p>👉 <a href="https://www.aliexpress.com/item/YOUR_ALIEXPRESS_PRODUCT_ID.html">
-        Click here to place on AliExpress
-      </a></p>
-      <p>Ship to customer address above. Paste AliExpress order ID in your tracker.</p>
-    `
+    to: process.env.EMAIL_OWNER,
+    subject: `New CARVAULT Order #${order.orderId} — ${order.color} — $${order.amount}`,
+    html: `<div style="font-family:sans-serif;max-width:600px">
+      <h2 style="color:#3399ff">New Order — Ship Now</h2>
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="padding:8px;background:#f5f5f5;width:140px"><b>Order ID</b></td><td style="padding:8px">#${order.orderId}</td></tr>
+        <tr><td style="padding:8px"><b>Product</b></td><td style="padding:8px">CARVAULT Seat Organizer — ${order.color}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5"><b>Quantity</b></td><td style="padding:8px;background:#f5f5f5">${order.qty}</td></tr>
+        <tr><td style="padding:8px"><b>Amount</b></td><td style="padding:8px;color:#3399ff;font-size:18px"><b>$${order.amount}</b></td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5"><b>Payment</b></td><td style="padding:8px;background:#f5f5f5">${order.paymentMethod}</td></tr>
+        <tr><td style="padding:8px"><b>Name</b></td><td style="padding:8px">${order.customerName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5"><b>Email</b></td><td style="padding:8px;background:#f5f5f5">${order.customerEmail}</td></tr>
+        <tr><td style="padding:8px"><b>Phone</b></td><td style="padding:8px">${order.customerPhone || '—'}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5"><b>Ship To</b></td><td style="padding:8px;background:#f5f5f5">${addr}</td></tr>
+      </table>
+      <div style="background:#e8f5e9;border-radius:8px;padding:16px;margin-top:20px">
+        <b>👉 Place on AliExpress:</b><br>
+        <a href="https://www.aliexpress.com/item/YOUR_PRODUCT_ID.html">Click here to order</a><br>
+        <small>Ship to: ${addr}</small>
+      </div>
+      <p style="color:#999;font-size:12px;margin-top:16px">Order time: ${order.timestamp}</p>
+    </div>`
   });
 
-  // Confirmation email to CUSTOMER
+  // Confirmation to customer
   await mailer.sendMail({
     from: `"CARVAULT" <${process.env.EMAIL_FROM}>`,
-    to:   order.customerEmail,
-    subject: `Your CARVAULT order is confirmed! 🚗`,
-    html: `
-      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
-        <h1 style="color:#111">Order Confirmed</h1>
-        <p>Thanks ${order.customerName}! Your CARVAULT Seat Gap Organizer (${order.color}) is on its way.</p>
-        <table style="width:100%;border-collapse:collapse;margin:20px 0">
-          <tr style="background:#f5f5f5">
-            <td style="padding:12px">Product</td>
-            <td style="padding:12px">CARVAULT Seat Gap Organizer — ${order.color}</td>
-          </tr>
-          <tr>
-            <td style="padding:12px">Quantity</td>
-            <td style="padding:12px">${order.qty}</td>
-          </tr>
-          <tr style="background:#f5f5f5">
-            <td style="padding:12px">Total</td>
-            <td style="padding:12px"><strong>$${order.amount}</strong></td>
-          </tr>
-          <tr>
-            <td style="padding:12px">Ship to</td>
-            <td style="padding:12px">${order.address.line1}, ${order.address.city}</td>
-          </tr>
-        </table>
-        <p>Estimated delivery: <strong>7–14 business days</strong></p>
-        <p>Questions? Reply to this email.</p>
-        <p style="color:#999;font-size:12px">CARVAULT · carvault.com</p>
+    to: order.customerEmail,
+    subject: `Order Confirmed — CARVAULT #${order.orderId}`,
+    html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+      <div style="background:#0a0f10;padding:24px;text-align:center">
+        <h1 style="color:#ede9e2;font-size:22px;margin:0;letter-spacing:.2em">CAR<span style="color:#3399ff">VAULT</span></h1>
       </div>
-    `
+      <div style="padding:32px;background:#fff">
+        <h2 style="color:#111">Order Confirmed ✓</h2>
+        <p style="color:#555">Hi ${order.customerName}, your order is confirmed and being processed.</p>
+        <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f8f8f8;border-radius:8px;overflow:hidden">
+          <tr><td style="padding:10px 16px;color:#555">Product</td><td style="padding:10px 16px">CARVAULT Seat Organizer — ${order.color}</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:10px 16px;color:#555">Quantity</td><td style="padding:10px 16px">${order.qty}</td></tr>
+          <tr><td style="padding:10px 16px;color:#555">Total</td><td style="padding:10px 16px;font-weight:bold;color:#3399ff;font-size:16px">$${order.amount}</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:10px 16px;color:#555">Order ID</td><td style="padding:10px 16px">#${order.orderId}</td></tr>
+          <tr><td style="padding:10px 16px;color:#555">Ship To</td><td style="padding:10px 16px">${addr}</td></tr>
+        </table>
+        <div style="background:#e8f0fe;border-radius:8px;padding:16px;margin:20px 0">
+          <b style="color:#3399ff">Estimated Delivery: 7–14 business days</b><br>
+          <small style="color:#555">You will receive a tracking number once shipped.</small>
+        </div>
+        <p style="color:#999;font-size:12px">Questions? Reply to this email anytime.</p>
+      </div>
+      <div style="background:#f5f5f5;padding:16px;text-align:center">
+        <p style="color:#999;font-size:11px;margin:0">CARVAULT · carvault.com</p>
+      </div>
+    </div>`
   });
 }
 
-// ============================================================
-// STRIPE ROUTES
-// ============================================================
-
-// 1. Create a Stripe Checkout Session
-app.post('/api/stripe/create-session', async (req, res) => {
+// ════════════════════════════════════════════════════════════
+// STRIPE
+// ════════════════════════════════════════════════════════════
+app.post('/api/stripe/create-payment-intent', async (req, res) => {
   try {
-    const { color, qty, customerEmail } = req.body;
-    const unitPrice = 1900; // $19.00 in cents
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      customer_email: customerEmail || undefined,
-      line_items: [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `CARVAULT Seat Gap Organizer — ${color}`,
-            description: 'Suede PU Leather · Universal Fit · Zero Rattle',
-            images: ['https://carvault.com/product.jpg'], // optional: your product image URL
-          },
-          unit_amount: unitPrice,
-        },
-        quantity: qty || 1,
-      }],
-      mode: 'payment',
-      shipping_address_collection: {
-        allowed_countries: ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'NL', 'SE', 'NO'],
-      },
-      success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${process.env.FRONTEND_URL}/`,
+    const { color, qty } = req.body;
+    const pi = await stripe.paymentIntents.create({
+      amount: 1900 * (parseInt(qty) || 1),
+      currency: 'usd',
+      automatic_payment_methods: { enabled: true },
       metadata: { color, qty: String(qty || 1) },
     });
-
-    res.json({ url: session.url });
+    res.json({ clientSecret: pi.client_secret });
   } catch (err) {
-    console.error('Stripe session error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. Stripe Webhook — fires AFTER payment succeeds
 app.post('/webhook/stripe', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
   let event;
-
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error('Webhook signature failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle embedded Payment Element success
   if (event.type === 'payment_intent.succeeded') {
-    const pi       = event.data.object;
-    const shipping = pi.shipping;
-    const order    = {
-      paymentId:     pi.id,
-      paymentMethod: 'stripe-embedded',
-      color:         pi.metadata.color,
-      qty:           pi.metadata.qty,
-      amount:        (pi.amount / 100).toFixed(2),
-      customerEmail: pi.receipt_email || 'not provided',
-      customerName:  shipping?.name   || 'Customer',
-      address: {
-        line1:       shipping?.address?.line1        || 'Collected via Stripe',
-        city:        shipping?.address?.city         || '',
-        state:       shipping?.address?.state        || '',
-        postal_code: shipping?.address?.postal_code  || '',
-        country:     shipping?.address?.country      || '',
-      }
-    };
-    console.log('✅ Embedded Stripe payment succeeded:', order);
-    await sendOrderEmail(order);
-    saveOrder(order);
-  }
-
-  if (event.type === 'checkout.session.completed') {
-    const session  = event.data.object;
-    const shipping = session.shipping_details;
-
+    const pi = event.data.object;
+    const ship = pi.shipping;
     const order = {
-      paymentId:     session.id,
-      paymentMethod: 'stripe',
-      color:         session.metadata.color,
-      qty:           session.metadata.qty,
-      amount:        (session.amount_total / 100).toFixed(2),
-      customerEmail: session.customer_details?.email,
-      customerName:  shipping?.name || 'Customer',
-      address: {
-        line1:       shipping?.address?.line1 || '',
-        city:        shipping?.address?.city  || '',
-        state:       shipping?.address?.state || '',
-        postal_code: shipping?.address?.postal_code || '',
-        country:     shipping?.address?.country || '',
-      }
+      orderId: genOrderId(), paymentId: pi.id, paymentMethod: 'stripe',
+      color: pi.metadata.color || '—', qty: pi.metadata.qty || '1',
+      amount: (pi.amount/100).toFixed(2),
+      customerEmail: pi.receipt_email || '', customerName: ship?.name || 'Customer', customerPhone: '',
+      address: { line1: ship?.address?.line1||'', line2: ship?.address?.line2||'',
+        city: ship?.address?.city||'', state: ship?.address?.state||'',
+        postal_code: ship?.address?.postal_code||'', country: ship?.address?.country||'US' },
+      timestamp: new Date().toISOString()
     };
-
-    console.log('✅ Stripe order received:', order);
-    await sendOrderEmail(order);
-
-    // Save to local orders log (append to orders.json)
-    saveOrder(order);
+    saveOrder(order); await sendOrderEmail(order);
   }
-
-  }
-
   res.json({ received: true });
 });
 
-// ============================================================
-// PAYPAL ROUTES
-// ============================================================
-
-// 1. Create PayPal Order
+// ════════════════════════════════════════════════════════════
+// PAYPAL
+// ════════════════════════════════════════════════════════════
 app.post('/api/paypal/create-order', async (req, res) => {
   try {
     const { color, qty } = req.body;
-    const total = (19 * (qty || 1)).toFixed(2);
-    const client = getPayPalClient();
-
+    const total = (19 * (parseInt(qty)||1)).toFixed(2);
     const request = new paypal.orders.OrdersCreateRequest();
     request.prefer('return=representation');
     request.requestBody({
       intent: 'CAPTURE',
-      purchase_units: [{
-        amount: {
-          currency_code: 'USD',
-          value: total,
-          breakdown: {
-            item_total: { currency_code: 'USD', value: total }
-          }
-        },
-        items: [{
-          name:        `CARVAULT Seat Gap Organizer — ${color}`,
-          unit_amount: { currency_code: 'USD', value: '19.00' },
-          quantity:    String(qty || 1),
-          category:    'PHYSICAL_GOODS',
-        }],
-        shipping: { type: 'SHIPPING' },
-        description: `CARVAULT ${color} x${qty}`,
+      purchase_units: [{ amount: { currency_code:'USD', value:total,
+        breakdown:{item_total:{currency_code:'USD',value:total}} },
+        items:[{name:`CARVAULT Seat Organizer — ${color}`,unit_amount:{currency_code:'USD',value:'19.00'},quantity:String(qty||1),category:'PHYSICAL_GOODS'}]
       }],
-      application_context: {
-        brand_name:          'CARVAULT',
-        shipping_preference: 'GET_FROM_FILE', // customer enters shipping in PayPal
-        user_action:         'PAY_NOW',
-        return_url:          `${process.env.FRONTEND_URL}/success`,
-        cancel_url:          `${process.env.FRONTEND_URL}/`,
-      },
+      application_context: { brand_name:'CARVAULT', shipping_preference:'GET_FROM_FILE',
+        user_action:'PAY_NOW', return_url:`${process.env.FRONTEND_URL}/?payment=success`,
+        cancel_url:`${process.env.FRONTEND_URL}/` }
     });
-
-    const order = await client.execute(request);
-    res.json({ id: order.result.id });
-  } catch (err) {
-    console.error('PayPal create order error:', err);
-    res.status(500).json({ error: err.message });
-  }
+    const o = await paypalClient().execute(request);
+    res.json({ id: o.result.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. Capture PayPal Order (fires after customer approves)
 app.post('/api/paypal/capture-order', async (req, res) => {
   try {
     const { orderID, color, qty } = req.body;
-    const client  = getPayPalClient();
-    const request = new paypal.orders.OrdersCaptureRequest(orderID);
-    request.requestBody({});
-
-    const capture = await client.execute(request);
-    const result  = capture.result;
-    const payer   = result.payer;
-    const unit    = result.purchase_units[0];
-    const ship    = unit.shipping;
-
+    const req2 = new paypal.orders.OrdersCaptureRequest(orderID);
+    req2.requestBody({});
+    const cap   = await paypalClient().execute(req2);
+    const r     = cap.result;
+    const ship  = r.purchase_units[0].shipping;
     const order = {
-      paymentId:     result.id,
-      paymentMethod: 'paypal',
-      color,
-      qty:           String(qty || 1),
-      amount:        unit.payments.captures[0].amount.value,
-      customerEmail: payer.email_address,
-      customerName:  `${payer.name.given_name} ${payer.name.surname}`,
-      address: {
-        line1:       ship?.address?.address_line_1 || '',
-        city:        ship?.address?.admin_area_2   || '',
-        state:       ship?.address?.admin_area_1   || '',
-        postal_code: ship?.address?.postal_code    || '',
-        country:     ship?.address?.country_code   || '',
-      }
+      orderId: genOrderId(), paymentId: r.id, paymentMethod: 'paypal',
+      color: color||'—', qty: String(qty||1),
+      amount: r.purchase_units[0].payments.captures[0].amount.value,
+      customerEmail: r.payer.email_address||'', customerName: ship?.name||`${r.payer.name.given_name} ${r.payer.name.surname}`, customerPhone:'',
+      address:{ line1:ship?.address?.address_line_1||'', line2:ship?.address?.address_line_2||'',
+        city:ship?.address?.admin_area_2||'', state:ship?.address?.admin_area_1||'',
+        postal_code:ship?.address?.postal_code||'', country:ship?.address?.country_code||'US' },
+      timestamp: new Date().toISOString()
     };
-
-    console.log('✅ PayPal order captured:', order);
-    await sendOrderEmail(order);
-    saveOrder(order);
-
-    res.json({ status: 'success', order });
-  } catch (err) {
-    console.error('PayPal capture error:', err);
-    res.status(500).json({ error: err.message });
-  }
+    saveOrder(order); await sendOrderEmail(order);
+    res.json({ status:'success', orderId:order.orderId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ============================================================
-// ORDER LOG (saves to orders.json locally)
-// ============================================================
-const fs = require('fs');
-function saveOrder(order) {
-  const file = path.join(__dirname, 'orders.json');
-  let orders = [];
-  if (fs.existsSync(file)) {
-    try { orders = JSON.parse(fs.readFileSync(file, 'utf8')); } catch(e) {}
-  }
-  orders.push({ ...order, timestamp: new Date().toISOString() });
-  fs.writeFileSync(file, JSON.stringify(orders, null, 2));
-}
-
-// ── View orders (protect this in production!) ───────────────
+// ── ADMIN ─────────────────────────────────────────────────────
 app.get('/admin/orders', (req, res) => {
-  const key = req.query.key;
-  if (key !== process.env.ADMIN_KEY) return res.status(403).send('Forbidden');
-  const file = path.join(__dirname, 'orders.json');
-  if (!fs.existsSync(file)) return res.json([]);
-  res.json(JSON.parse(fs.readFileSync(file, 'utf8')));
+  if (req.query.key !== process.env.ADMIN_KEY) return res.status(403).json({ error:'Forbidden' });
+  const file = path.join(__dirname,'orders.json');
+  if (!fs.existsSync(file)) return res.json({ count:0, total:'0.00', orders:[] });
+  const orders = JSON.parse(fs.readFileSync(file,'utf8'));
+  res.json({ count:orders.length, total:orders.reduce((s,o)=>s+parseFloat(o.amount||0),0).toFixed(2), orders });
 });
 
-// ── Health check ─────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
+app.get('/health', (_,res) => res.json({ status:'ok', time:new Date().toISOString() }));
 
-// ── Start ────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚗 CARVAULT backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`CARVAULT backend on :${PORT}`));
